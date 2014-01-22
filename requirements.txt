@@ -30,3 +30,4 @@ pep8-naming
 flake8-todo
 flake8-docstrings
 django-cas
+https://github.com/knabar/django-shibboleth/archive/master.zip
