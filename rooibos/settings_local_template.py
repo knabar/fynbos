@@ -76,7 +76,7 @@ CACHE_BACKEND = 'memcached://127.0.0.1:11211/'
 
 INTERNAL_IPS = ('127.0.0.1',)
 
-HELP_URL = 'http://mdid.org/help/'
+HELP_URL = 'http://sites.jmu.edu/mdidhelp/'
 
 DEFAULT_LANGUAGE = 'en-us'
 
