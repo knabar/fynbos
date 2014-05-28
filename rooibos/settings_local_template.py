@@ -108,6 +108,8 @@ LDAP_AUTH = (
         'uri': 'ldap://ldap.example.edu',
         'base': 'ou=People,o=example',
         'cn': 'cn',
+        # Set to none when using bind_user, but want to use regular
+        # "cn=username,base" querystring instead of what is returned in dn field
         'dn': 'dn',
         'version': 2,
         'scope': 1,
@@ -118,6 +120,8 @@ LDAP_AUTH = (
         'email': 'mail',
         'bind_user': '',
         'bind_password': '',
+        # Get target user attributes while connected with bind user
+        'bind_user_get_attrs': False,
     },
     {
         # Active Directory Example

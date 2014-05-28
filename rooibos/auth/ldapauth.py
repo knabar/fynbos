@@ -4,11 +4,13 @@ import ldap
 from baseauth import BaseAuthenticationBackend
 import logging
 
+
 def _ldap_const(name):
     try:
         return getattr(ldap, name)
     except (TypeError, AttributeError):
         return name
+
 
 class LdapAuthenticationBackend(BaseAuthenticationBackend):
     def authenticate(self, username=None, password=None):
@@ -28,38 +30,50 @@ class LdapAuthenticationBackend(BaseAuthenticationBackend):
                         logging.info('LDAP: Setting connection option %s to %s', option, value)
                         l.set_option(_ldap_const(option), value)
 
+                dn = '%s=%s,%s' % (ldap_auth['cn'],
+                                   username, ldap_auth['base'])
+
                 if ldap_auth.get('bind_user'):
                     logging.info('LDAP: Binding with bind user')
                     l.simple_bind_s(ldap_auth['bind_user'],
                                     ldap_auth.get('bind_password'))
-                    logging.info('LDAP: Searching for user')
-                    result = l.search_s(ldap_auth['base'],
-                                    ldap_auth['scope'],
-                                    '%s=%s' % (ldap_auth['cn'], username),
-                                    attrlist=[ldap_auth.get('dn', 'dn')])
+                    if ldap_auth.get('bind_user_get_attrs'):
+                        attrlist = ldap_auth['attributes']
+                    else:
+                        attrlist = ()
+                    dn_field = ldap_auth.get('dn')
+                    if dn_field:
+                        attrlist += (dn_field,)
+                    logging.info('LDAP: Searching for user and fetching attributes %s' % attrlist)
+                    result = l.search_s(
+                        ldap_auth['base'],
+                        _ldap_const(ldap_auth['scope']),
+                        '%s=%s' % (ldap_auth['cn'], username),
+                        attrlist=attrlist)
                     if (len(result) != 1):
                         logging.info('LDAP: Did not find exactly one user')
                         continue
-                    dn = result[0][1].get(ldap_auth.get('dn', 'dn'))
-                    if type(dn) in (tuple, list):
-                        dn = dn[0]
-                else:
-                    dn = '%s=%s,%s' % (ldap_auth['cn'],
-                                       username, ldap_auth['base'])
+                    if dn_field:
+                        dn = result[0][1].get(dn_field)
+                        if type(dn) in (tuple, list):
+                            dn = dn[0]
 
                 logging.info('LDAP: Binding with dn=%s' % dn)
                 l.simple_bind_s(dn, password)
+                attrlist = []
+                if not ldap_auth.get('bind_user_get_attrs'):
+                    attrlist = ldap_auth['attributes']
                 logging.info('LDAP: Searching')
                 result = l.search_s(ldap_auth['base'],
                                     _ldap_const(ldap_auth['scope']),
                                     '%s=%s' % (ldap_auth['cn'], username),
-                                    attrlist=ldap_auth['attributes'])
+                                    attrlist=attrlist)
                 if (len(result) != 1):
                     continue
                 logging.info('LDAP: Processing attributes')
                 attributes = result[0][1]
                 for attr in ldap_auth['attributes']:
-                    if attributes.has_key(attr):
+                    if attr in attributes:
                         if not type(attributes[attr]) in (tuple, list):
                             attributes[attr] = (attributes[attr],)
                     else:
@@ -67,7 +81,8 @@ class LdapAuthenticationBackend(BaseAuthenticationBackend):
                 try:
                     user = User.objects.get(username=username)
                 except User.DoesNotExist:
-                    user = self._create_user(username,
+                    user = self._create_user(
+                        username,
                         None,
                         ' '.join(attributes[ldap_auth['firstname']]),
                         ' '.join(attributes[ldap_auth['lastname']]),
