@@ -13,6 +13,7 @@ def _ldap_const(name):
 
 
 class LdapAuthenticationBackend(BaseAuthenticationBackend):
+
     def authenticate(self, username=None, password=None):
         for ldap_auth in settings.LDAP_AUTH:
             try:
@@ -57,10 +58,12 @@ class LdapAuthenticationBackend(BaseAuthenticationBackend):
                         dn = result[0][1].get(dn_field)
                         if type(dn) in (tuple, list):
                             dn = dn[0]
+                    if ldap_auth.get('bind_user_get_attrs'):
+                        attributes = self._process_attributes(ldap_auth, result)
 
                 logging.info('LDAP: Binding with dn=%s' % dn)
                 l.simple_bind_s(dn, password)
-                attrlist = []
+                attrlist = ()
                 if not ldap_auth.get('bind_user_get_attrs'):
                     attrlist = ldap_auth['attributes']
                 logging.info('LDAP: Searching')
@@ -71,13 +74,8 @@ class LdapAuthenticationBackend(BaseAuthenticationBackend):
                 if (len(result) != 1):
                     continue
                 logging.info('LDAP: Processing attributes')
-                attributes = result[0][1]
-                for attr in ldap_auth['attributes']:
-                    if attr in attributes:
-                        if not type(attributes[attr]) in (tuple, list):
-                            attributes[attr] = (attributes[attr],)
-                    else:
-                        attributes[attr] = []
+                if not ldap_auth.get('bind_user_get_attrs'):
+                    attributes = self._process_attributes(ldap_auth, result)
                 try:
                     user = User.objects.get(username=username)
                 except User.DoesNotExist:
@@ -96,3 +94,13 @@ class LdapAuthenticationBackend(BaseAuthenticationBackend):
                 if l:
                     l.unbind_s()
         return None
+
+    def _process_attributes(self, ldap_auth, result):
+        attributes = result[0][1]
+        for attr in ldap_auth['attributes']:
+            if attr in attributes:
+                if not type(attributes[attr]) in (tuple, list):
+                    attributes[attr] = (attributes[attr],)
+            else:
+                attributes[attr] = []
+        return attributes
