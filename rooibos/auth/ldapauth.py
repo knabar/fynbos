@@ -63,18 +63,16 @@ class LdapAuthenticationBackend(BaseAuthenticationBackend):
 
                 logging.info('LDAP: Binding with dn=%s' % dn)
                 l.simple_bind_s(dn, password)
-                attrlist = ()
                 if not ldap_auth.get('bind_user_get_attrs'):
                     attrlist = ldap_auth['attributes']
-                logging.info('LDAP: Searching')
-                result = l.search_s(ldap_auth['base'],
-                                    _ldap_const(ldap_auth['scope']),
-                                    '%s=%s' % (ldap_auth['cn'], username),
-                                    attrlist=attrlist)
-                if (len(result) != 1):
-                    continue
-                logging.info('LDAP: Processing attributes')
-                if not ldap_auth.get('bind_user_get_attrs'):
+                    logging.info('LDAP: Searching')
+                    result = l.search_s(ldap_auth['base'],
+                                        _ldap_const(ldap_auth['scope']),
+                                        '%s=%s' % (ldap_auth['cn'], username),
+                                        attrlist=attrlist)
+                    if (len(result) != 1):
+                        continue
+                    logging.info('LDAP: Processing attributes')
                     attributes = self._process_attributes(ldap_auth, result)
                 try:
                     user = User.objects.get(username=username)
