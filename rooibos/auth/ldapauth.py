@@ -15,6 +15,7 @@ def _ldap_const(name):
 class LdapAuthenticationBackend(BaseAuthenticationBackend):
 
     def authenticate(self, username=None, password=None):
+        l = None
         for ldap_auth in settings.LDAP_AUTH:
             try:
                 for option, value in ldap_auth['options'].iteritems():
@@ -45,13 +46,13 @@ class LdapAuthenticationBackend(BaseAuthenticationBackend):
                     dn_field = ldap_auth.get('dn')
                     if dn_field:
                         attrlist += (dn_field,)
-                    logging.info('LDAP: Searching for user and fetching attributes %s' % attrlist)
+                    logging.info('LDAP: Searching for user and fetching attributes %s' % (attrlist,))
                     result = l.search_s(
                         ldap_auth['base'],
                         _ldap_const(ldap_auth['scope']),
                         '%s=%s' % (ldap_auth['cn'], username),
                         attrlist=attrlist)
-                    if (len(result) != 1):
+                    if len(result) != 1:
                         logging.info('LDAP: Did not find exactly one user')
                         continue
                     if dn_field:
@@ -70,7 +71,7 @@ class LdapAuthenticationBackend(BaseAuthenticationBackend):
                                         _ldap_const(ldap_auth['scope']),
                                         '%s=%s' % (ldap_auth['cn'], username),
                                         attrlist=attrlist)
-                    if (len(result) != 1):
+                    if len(result) != 1:
                         continue
                     logging.info('LDAP: Processing attributes')
                     attributes = self._process_attributes(ldap_auth, result)
@@ -87,7 +88,9 @@ class LdapAuthenticationBackend(BaseAuthenticationBackend):
                     continue
                 return user
             except ldap.LDAPError, error_message:
-                logging.debug('LDAP error: %s' % error_message)
+                logging.exception('LDAP error: %s' % error_message)
+            except Exception:
+                logging.exception('Exception in LDAP auth')
             finally:
                 if l:
                     l.unbind_s()
