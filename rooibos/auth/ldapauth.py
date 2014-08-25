@@ -46,7 +46,8 @@ class LdapAuthenticationBackend(BaseAuthenticationBackend):
                     dn_field = ldap_auth.get('dn')
                     if dn_field:
                         attrlist += (dn_field,)
-                    logging.info('LDAP: Searching for user and fetching attributes %s' % (attrlist,))
+                    logging.info('LDAP: Searching for user "%s" and fetching attributes %s' %
+                                 (username, attrlist))
                     result = l.search_s(
                         ldap_auth['base'],
                         _ldap_const(ldap_auth['scope']),
