@@ -1,11 +1,12 @@
 import unittest
 from models import Collection, CollectionItem, Record, Field, FieldValue, \
-    get_system_field, standardfield
+    get_system_field, standardfield, collections_without_personal_image_restrictions
 from datetime import datetime, timedelta
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User, Group
 from rooibos.access.models import AccessControl
 from spreadsheetimport import SpreadsheetImport
 from cStringIO import StringIO
+from rooibos.access import get_effective_permissions_and_restrictions
 
 
 class FieldValueTestCase(unittest.TestCase):
@@ -724,3 +725,84 @@ class RecordNameTestCase(unittest.TestCase):
 
         record = Record.objects.get(id=rid)
         self.assertEqual('identifier-407', record.name)
+
+
+class PersonalImageRestrictionTestCase(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        from middleware import DataOnStart
+        try:
+            DataOnStart()
+        except:
+            pass
+
+    def setUp(self):
+        self.collection = Collection.objects.create(title='Restricted Test Collection', name='restricted-test')
+        self.user = User.objects.create(username='restrictedtest-user')
+        AccessControl.objects.create(content_object=self.collection,
+                                     user=self.user,
+                                     read=True)
+        self.user2 = User.objects.create(username='restrictedtest-user2')
+        AccessControl.objects.create(content_object=self.collection,
+                                     user=self.user2,
+                                     read=True,
+                                     restrictions=dict(personalimages='no'))
+        self.user3 = User.objects.create(username='restrictedtest-user3')
+        AccessControl.objects.create(content_object=self.collection,
+                                     user=self.user3,
+                                     read=True,
+                                     restrictions=dict(personalimages='yes'))
+        self.user4 = User.objects.create(username='restrictedtest-user4')
+        self.group = Group.objects.create(name='restrictedtest-group')
+        AccessControl.objects.create(content_object=self.collection,
+                                     usergroup=self.group,
+                                     read=True,
+                                     restrictions=dict(personalimages='no'))
+        self.group2 = Group.objects.create(name='restrictedtest-group2')
+        AccessControl.objects.create(content_object=self.collection,
+                                     usergroup=self.group2,
+                                     read=True,
+                                     restrictions=dict(personalimages='yes'))
+
+    def tearDown(self):
+        self.user.delete()
+        self.user2.delete()
+        self.user3.delete()
+        self.user4.delete()
+        self.group.delete()
+        self.group2.delete()
+        self.collection.delete()
+
+    def fetchResult(self, user):
+        query = Collection.objects.filter(id=self.collection.id)
+        return list(collections_without_personal_image_restrictions(user, query))
+
+    def expectAllowed(self, user):
+        result = self.fetchResult(user)
+        self.assertEqual(1, len(result))
+        self.assertEqual(self.collection.id, result[0].id)
+
+    def expectDenied(self, user):
+        result = self.fetchResult(user)
+        self.assertEqual(0, len(result))
+
+    def testDefault(self):
+        self.expectAllowed(self.user)
+
+    def testRestricted(self):
+        self.expectDenied(self.user2)
+
+    def testUnrestricted(self):
+        self.expectAllowed(self.user3)
+
+    def testGroupDefault(self):
+        # if only in denying group -> deny
+        self.group.user_set.add(self.user4)
+        self.expectDenied(self.user4)
+        # if in denying and granting group -> deny
+        self.group2.user_set.add(self.user4)
+        self.expectDenied(self.user4)
+        # if only in granting group -> allow
+        self.group.user_set.remove(self.user4)
+        self.expectAllowed(self.user4)

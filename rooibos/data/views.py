@@ -58,7 +58,7 @@ def record(request, id, name, contexttype=None, contextid=None, contextname=None
 
     collections = apply_collection_visibility_preferences(request.user, Collection.objects.all())
     writable_collections = list(filter_by_access(request.user, collections, write=True).values_list('id', flat=True))
-    readable_collections = list(filter_by_access(request.user, collections).values_list('id', flat=True))
+    personal_image_collections = list(collections_without_personal_image_restrictions(request.user).values_list('id', flat=True))
     can_edit = request.user.is_authenticated()
     can_manage = False
 
@@ -67,7 +67,7 @@ def record(request, id, name, contexttype=None, contextid=None, contextname=None
         can_edit = can_edit and record.editable_by(request.user)
         can_manage = record.manageable_by(request.user)
     else:
-        if request.user.is_authenticated() and (writable_collections or (personal and readable_collections)):
+        if request.user.is_authenticated() and (writable_collections or (personal and personal_image_collections)):
             record = Record()
             if personal:
                 record.owner = request.user
@@ -75,7 +75,7 @@ def record(request, id, name, contexttype=None, contextid=None, contextname=None
             raise Http404()
 
     if record.owner:
-        valid_collections = set(readable_collections) | set(writable_collections)
+        valid_collections = set(personal_image_collections) | set(writable_collections)
     else:
         valid_collections = writable_collections
 
@@ -276,6 +276,7 @@ def record(request, id, name, contexttype=None, contextid=None, contextname=None
                 collectionformset = CollectionFormSet(prefix='c', initial=collections)
 
     else:
+        readable_collections = list(filter_by_access(request.user, collections).values_list('id', flat=True))
         fieldvalues_readonly = record.get_fieldvalues(owner=request.user, fieldset=fieldset)
         formset = None
         q = Q() if record.owner == request.user or request.user.is_superuser else Q(hidden=False)
@@ -377,7 +378,7 @@ class DisplayOnlyTextWidget(forms.HiddenInput):
 @login_required
 def data_import_file(request, file):
 
-    available_collections = filter_by_access(request.user, Collection)
+    available_collections = collections_without_personal_image_restrictions(request.user)
     writable_collection_ids = list(filter_by_access(request.user, Collection, write=True).values_list('id', flat=True))
     if not available_collections:
         raise Http404

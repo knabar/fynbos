@@ -8,7 +8,7 @@ from django.db import models, transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ObjectDoesNotExist
-from rooibos.access import filter_by_access, check_access
+from rooibos.access import filter_by_access, check_access, get_effective_permissions_and_restrictions
 from rooibos.access.models import AccessControl
 from rooibos.util import unique_slug
 from rooibos.util.caching import get_cached_value, cache_get, cache_get_many, cache_set, cache_set_many
@@ -79,6 +79,32 @@ class Collection(models.Model):
     @property
     def all_records(self):
         return Record.objects.filter(collection__in=self.all_child_collections + (self,)).distinct()
+
+
+def collections_without_personal_image_restrictions(user, collections=None):
+
+    if not collections:
+        collections = filter_by_access(user, Collection)
+
+    exclude = []
+    for collection in collections:
+        read, write, manage, restrictions = get_effective_permissions_and_restrictions(user, collection)
+        if write or manage:
+            continue
+        if restrictions:
+            setting = restrictions.get('personalimages')
+            if setting == 'no':
+                exclude.append(collection.id)
+                continue
+            elif setting == 'yes':
+                continue
+        if not read:
+            exclude.append(collection.id)
+
+    if exclude:
+        collections = collections.exclude(id__in=exclude)
+
+    return collections
 
 
 class CollectionItem(models.Model):
