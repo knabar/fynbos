@@ -76,6 +76,7 @@ CACHE_BACKEND = 'memcached://127.0.0.1:11211/'
 
 INTERNAL_IPS = ('127.0.0.1',)
 
+# If HELP_URL ends in / or ?, the current page id or reference will be appended
 HELP_URL = 'http://mdid.org/help/'
 
 DEFAULT_LANGUAGE = 'en-us'
@@ -91,8 +92,6 @@ ARTSTOR_GATEWAY = None
 
 OPEN_OFFICE_PATH = 'C:/Program Files/OpenOffice.org 3/program/'
 
-GEARMAN_SERVERS = ['127.0.0.1']
-
 AUTHENTICATION_BACKENDS = (
     'django.contrib.auth.backends.ModelBackend',
     'rooibos.auth.ldapauth.LdapAuthenticationBackend',
@@ -100,9 +99,7 @@ AUTHENTICATION_BACKENDS = (
 #    'rooibos.auth.mailauth.PopAuthenticationBackend',
 )
 
-MIDDLEWARE_CLASSES = (
-    'rooibos.auth.middleware.BasicAuthenticationMiddleware',
-)
+MIDDLEWARE_CLASSES = ('rooibos.auth.middleware.BasicAuthenticationMiddleware',)
 
 LDAP_AUTH = (
     {
