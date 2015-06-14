@@ -101,6 +101,7 @@ class MigrateModel(object):
         self.need_instance_map = False
         self.supports_deletion = True
         self.query = query
+        self.force_migration = False
 
     def hash(self, row):
         return STATIC_CONTENT_HASH
@@ -148,13 +149,13 @@ class MigrateModel(object):
             h = self.object_history.pop(self.key(row), None)
             create = True
             if h:
-                if compare_hash(h, hash) or self.m2m_model:
+                if not self.force_migration and (compare_hash(h, hash) or self.m2m_model):
                     # object unchanged, don't need to do anything
                     # or, we're working on a many-to-many relation, don't need to do anything on the instance
                     logging.debug('%s %s unchanged in source, skipping' % (self.model_name, self.key(row)))
                     create = False
                     self.unchanged += 1
-                elif compare_hash(h, STATIC_CONTENT_HASH):
+                elif not self.force_migration and compare_hash(h, STATIC_CONTENT_HASH):
                     # object may have changed, but we don't have the hash of the previous version
                     # so we can't know.  Just store the new hash in the history to be able
                     # to track future changes
@@ -590,6 +591,8 @@ class MigrateCollectionItems(MigrateModel):
 
 class MigrateMedia(MigrateModel):
 
+    remove_full_prefix = False
+
     def __init__(self, cursor):
         super(MigrateMedia, self).__init__(cursor=cursor, model=Media,
                                            query="SELECT ID,Resource,CollectionID FROM Images")
@@ -600,7 +603,10 @@ class MigrateMedia(MigrateModel):
         return content_hash(row.Resource)
 
     def update(self, instance, row):
-        instance.url = os.path.join('full', row.Resource.strip())
+        if self.remove_full_prefix:
+            instance.url = row.Resource.strip()
+        else:
+            instance.url = os.path.join('full', row.Resource.strip())
 
     def create_instance(self, row):
         if not self.records.has_key(str(row.ID)) or not self.storages.has_key(str(row.CollectionID)):
@@ -762,6 +768,7 @@ class MigrateFields(MigrateModel):
             query="SELECT ID,Label,Name,ControlledListID FROM FieldDefinitions")
         self.vocabularies = MigrateModel.instance_maps['vocabulary']
         self.need_instance_map = True
+        self.force_migration = True
 
     def hash(self, row):
         return content_hash(row.Label, row.Name, row.ControlledListID)
@@ -827,7 +834,7 @@ class MigrateFieldSetFields(MigrateModel):
 
     def update(self, instance, row):
         instance.fieldset = self.fieldsets.get(str(row.CollectionID))
-        instance.field = self.fields.get(str(row.ID))
+        instance.field = self.fields.get(str(row.ID)) or instance.field
         instance.label = row.Label
         instance.order = row.DisplayOrder
         instance.importance = (row.ShortView and 4) + (row.MediumView and 2) + (row.LongView and 1)
@@ -1023,6 +1030,11 @@ class Command(BaseCommand):
     help = 'Migrates database from MDID2'
     args = "config_file"
 
+    option_list = BaseCommand.option_list + (
+        make_option('--remove-full-prefix', dest='remove_full_prefix', action='store_true',
+                    help='Remove full/ prefix from media paths'),
+    )
+
     def readConfig(self, file):
         connection = servertype = None
         for e in minidom.parse(file).getElementsByTagName('database')[0].childNodes:
@@ -1068,6 +1080,8 @@ class Command(BaseCommand):
             print "Database version is not supported"
             print "Found %r, supported is %r" % (row.Version, supported)
             return
+
+        MigrateMedia.remove_full_prefix = options.get('remove_full_prefix')
 
         import rooibos.solr.models
         rooibos.solr.models.SolrIndexUpdates.objects.all().delete()

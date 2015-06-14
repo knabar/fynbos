@@ -15,7 +15,7 @@ from pysolr import SolrError
 from rooibos.access import filter_by_access
 import socket
 from rooibos.util import safe_int, json_view, calculate_hash
-from rooibos.data.models import Field, Collection, FieldValue, Record
+from rooibos.data.models import Field, Collection, FieldValue, Record, FieldSet
 from rooibos.data.functions import apply_collection_visibility_preferences, \
     get_collection_visibility_preferences
 from rooibos.storage.models import Storage
@@ -310,6 +310,27 @@ def _generate_query(search_facets, user, collection, criteria, keywords,
 templates = dict(l='list', im='images')
 
 
+def _get_facet_fields():
+    fields = cache.get('facet_fields')
+    if fields:
+        fields = Field.objects.filter(id__in=fields)
+    else:
+        # check if fieldset for facets exists
+        fieldset = None
+        try:
+            fieldset = FieldSet.objects.get(name='facet-fields')
+        except FieldSet.DoesNotExist:
+            pass
+        if fieldset:
+            fields = fieldset.fields.all()
+        else:
+            exclude_facets = ['identifier']
+            fields = Field.objects.filter(standard__prefix='dc').exclude(
+                name__in=exclude_facets)
+        cache.set('facet_fields', [f.id for f in fields], 60)
+    return fields
+
+
 def run_search(user,
                collection=None,
                criteria=[],
@@ -324,9 +345,8 @@ def run_search(user,
 
     available_storage = list(filter_by_access(user, Storage).values_list(
         'id', flat=True))
-    exclude_facets = ['identifier']
-    fields = Field.objects.filter(standard__prefix='dc').exclude(
-        name__in=exclude_facets)
+
+    fields = _get_facet_fields()
 
     search_facets = [SearchFacet('tag', 'Tags')] + [
         SearchFacet(field.name + '_t', field.label) for field in fields]
@@ -663,6 +683,30 @@ def search_json(request, id=None, name=None, selected=False):
     return dict(html=html)
 
 
+def _get_browse_fields(collection_id):
+    fields = cache.get('browse_fields_%s' % collection_id)
+    if fields:
+        fields = list(Field.objects.filter(id__in=fields))
+    else:
+        # check if fieldset for browsing exists
+        fieldset = None
+        try:
+            fieldset = FieldSet.objects.get(name='browse-collection-%s' % collection_id)
+        except FieldSet.DoesNotExist:
+            try:
+                fieldset = FieldSet.objects.get(name='browse-collections')
+            except FieldSet.DoesNotExist:
+                pass
+        query = FieldValue.objects.filter(record__collection=collection_id)
+        if fieldset:
+            query = query.filter(field__in=list(fieldset.fields.values_list('id', flat=True)))
+        ids = list(query.order_by().distinct().values_list('field_id', flat=True))
+        fields = list(Field.objects.filter(id__in=ids))
+        cache.set('browse_fields_%s' % collection_id,
+                  [f.id for f in fields], 60)
+    return fields
+
+
 def browse(request, id=None, name=None):
     collections = filter_by_access(request.user, Collection)
     collections = apply_collection_visibility_preferences(request.user,
@@ -684,17 +728,7 @@ def browse(request, id=None, name=None):
             kwargs={'id': collection.id, 'name': collection.name}))
 
     collection = id and get_object_or_404(collections, id=id) or collections[0]
-
-    fields = cache.get('browse_fields_%s' % collection.id)
-    if fields:
-        fields = list(Field.objects.filter(id__in=fields))
-    else:
-        ids = list(FieldValue.objects.filter(
-            record__collection=collection).order_by().distinct()
-            .values_list('field_id', flat=True))
-        fields = list(Field.objects.filter(id__in=ids))
-        cache.set('browse_fields_%s' % collection.id,
-                  [f.id for f in fields], 60)
+    fields = _get_browse_fields(collection.id)
 
     if not fields:
         raise Http404()

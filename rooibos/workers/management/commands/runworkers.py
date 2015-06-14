@@ -1,10 +1,11 @@
 from django.core.management.base import BaseCommand
 from django.conf import settings
-from rooibos.workers.registration import worker_callback, QUEUE_VERSION, ROUTING_KEY
+from rooibos.workers.registration import worker_callback, QUEUE_VERSION
 # does not get loaded otherwise:
 import rooibos.contrib.djangologging.middleware
 import logging
 import pika
+import time
 
 
 LOGGER = logging.getLogger(__name__)
@@ -23,23 +24,37 @@ class Command(BaseCommand):
             getattr(settings, 'INSTANCE_NAME', 'default'),
             QUEUE_VERSION,
         )
+        # For simplicity, use queue name for routing key
+        routing_key = queue_name
 
         LOGGER.info('Queue name %s', queue_name)
 
-        consumer = WorkerConsumer(
-            pika.ConnectionParameters(
-                **getattr(settings, 'RABBITMQ_OPTIONS', dict(host='localhost'))
-            ),
-            queue_name,
-            dict(
-                durable=True
-            ),
-        )
+        while True:
 
-        try:
-            consumer.run()
-        except KeyboardInterrupt:
-            consumer.stop()
+            LOGGER.debug('Starting consumer')
+
+            try:
+
+                consumer = WorkerConsumer(
+                    pika.ConnectionParameters(
+                        **getattr(settings, 'RABBITMQ_OPTIONS', dict(host='localhost'))
+                    ),
+                    queue_name,
+                    dict(
+                        durable=True
+                    ),
+                    routing_key
+                )
+
+                try:
+                    consumer.run()
+                except KeyboardInterrupt:
+                    consumer.stop()
+                    break
+
+            except:
+                LOGGER.exception('Exception in consumer')
+                time.sleep(5)
 
 
 class WorkerConsumer(object):
@@ -59,7 +74,7 @@ class WorkerConsumer(object):
     EXCHANGE = 'rooibos-workers'
     EXCHANGE_TYPE = 'direct'
 
-    def __init__(self, connection_params, queue_name, queue_options):
+    def __init__(self, connection_params, queue_name, queue_options, routing_key):
         """
         Create a new instance of the consumer class, passing in the AMQP
         URL used to connect to RabbitMQ.
@@ -75,6 +90,7 @@ class WorkerConsumer(object):
         self._connection_params = connection_params
         self._queue_name = queue_name
         self._queue_options = queue_options or dict()
+        self._routing_key = routing_key
 
     def connect(self):
         """This method connects to RabbitMQ, returning the connection handle.
@@ -232,9 +248,9 @@ class WorkerConsumer(object):
 
         """
         LOGGER.info('Binding %s to %s with %s',
-                    self.EXCHANGE, self._queue_name, ROUTING_KEY)
+                    self.EXCHANGE, self._queue_name, self._routing_key)
         self._channel.queue_bind(self.on_bindok, self._queue_name,
-                                 self.EXCHANGE, ROUTING_KEY)
+                                 self.EXCHANGE, self._routing_key)
 
     def add_on_cancel_callback(self):
         """Add a callback that will be invoked if RabbitMQ cancels the consumer
