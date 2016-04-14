@@ -31,6 +31,14 @@
     -->
     <fieldType name="string" class="solr.StrField" sortMissingLast="true" omitNorms="true"/>
 
+    <!-- case insensitive string for browsing -->
+    <fieldType name="string_ci" class="solr.TextField" sortMissingLast="true" omitNorms="true">
+      <analyzer>
+          <tokenizer class="solr.KeywordTokenizerFactory"/>
+          <filter class="solr.LowerCaseFilterFactory" />
+      </analyzer>
+    </fieldType>
+
     <!-- boolean type: "true" or "false" -->
     <fieldType name="boolean" class="solr.BoolField" sortMissingLast="true" omitNorms="true"/>
 
@@ -281,7 +289,7 @@
         Longer patterns will be matched first.  if equal size patterns
         both match, the first appearing in the schema will be used.  -->
    <dynamicField name="*_i"  type="sint"    indexed="true"  stored="true" multiValued="true"/>
-   <dynamicField name="*_s"  type="string"  indexed="true"  stored="true" multiValued="true"/>
+   <dynamicField name="*_s"  type="string_ci"  indexed="true"  stored="true" multiValued="true"/>
    <dynamicField name="*_l"  type="slong"   indexed="true"  stored="true" multiValued="true"/>
    <dynamicField name="*_b"  type="boolean" indexed="true"  stored="true" multiValued="true"/>
    <dynamicField name="*_f"  type="sfloat"  indexed="true"  stored="true" multiValued="true"/>
